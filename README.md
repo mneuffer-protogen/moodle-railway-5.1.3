@@ -109,7 +109,7 @@ Moodle will run a series of checks on your server environment. If everything sho
 
 Moodle will now run the full database installation. This may take a minute or two — you'll see a log of items being installed as it progresses. Scroll down to the bottom of the page and wait for the last item (`factor_webauthn`) to appear, then click **Continue**.
 
-> If you land on an error page after this step, see [IP address mismatch](#ip-address-mismatch) in the Troubleshooting section.
+> If you see *"Installation must be finished from the original IP address, sorry."* after this step, see [IP address mismatch](#ip-address-mismatch) in the Troubleshooting section.
 
 #### 2.8 — Create main administrator account
 
@@ -154,7 +154,23 @@ Browse available stable branches and release tags on the [Moodle GitHub tags pag
 
 ### IP address mismatch
 
-After the system installation step you may land on an error page warning about an IP address mismatch ([installhijacked](https://docs.moodle.org/405/en/error/admin/installhijacked)). This is a known side effect of Railway's reverse proxy and is not a security issue in this context. Simply **refresh the page** — it usually resolves within a few refreshes (typically less than 20). You'll then be taken to the next step automatically.
+After the system installation step you may see the error: *"Installation must be finished from the original IP address, sorry."* ([installhijacked](https://docs.moodle.org/405/en/error/admin/installhijacked)). This is a known side effect of Railway's reverse proxy and is not a security issue in this context. Simply **refresh the page** — it usually resolves within a few refreshes (typically less than 20) and you'll be taken to the next step automatically.
+
+#### Guaranteed fix — update the IP in the database
+
+If refreshing doesn't work, you can resolve this by updating the IP address stored in the database to match your current one:
+
+**1. Find your current IP**
+
+In your Railway project, open the **Moodle** service, open the current deployment, then go to the **Deploy Logs** tab. At the bottom of the log you'll see your current IP address — for example, you may have started the installation on `100.64.0.1` but are now on `100.64.0.2`. Copy this IP.
+
+![Moodle deploy logs showing current IP](screenshots/03-deploy-logs-ip.png)
+
+**2. Update the IP in the database**
+
+Open the **Postgres** service and go to the **Database** tab. Find the `mdl_user` table and open it. Locate the record with the username `admin`, click on it, and change the `lastip` field to the IP you just copied. Save the record, then reload your Moodle tab.
+
+![mdl_user table in Railway Postgres with lastip field](screenshots/04-mdl-user-lastip.png)
 
 ### Permission errors on moodledata
 
