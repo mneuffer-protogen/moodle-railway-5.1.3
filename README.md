@@ -55,7 +55,7 @@ Railway gives you a managed cloud platform with persistent volumes, built-in Pos
 
 Click the button below to deploy this template to your Railway account. This will automatically provision the Moodle service, a PostgreSQL database, and a persistent volume for Moodle data.
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/XQrl4e?referralCode=6VSPtD&utm_medium=integration&utm_source=template&utm_campaign=generic)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/moodle-lms?referralCode=6VSPtD&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
 After the template is deployed, your Railway project will look something like this:
 
