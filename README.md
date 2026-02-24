@@ -4,9 +4,20 @@ Quickly spin up a [Moodle](https://moodle.org) LMS sandbox on [Railway](https://
 
 > **This setup is intended for development and sandbox use only. It is not recommended for production. Use at your own risk.**
 
-> **Moodle version:** 4.5 LTS (`MOODLE_405_STABLE` branch — latest LTS as of February 2026, tracks the latest patch release)
-> **PHP version:** 8.3 (Apache, prefork MPM)
-> **Base image:** [moodlehq/moodle-php-apache](https://hub.docker.com/r/moodlehq/moodle-php-apache)
+---
+
+## Table of contents
+
+- [What this is (and isn't)](#what-this-is-and-isnt)
+- [Why Railway?](#why-railway)
+- [What's in this repo](#whats-in-this-repo)
+- [Deploy to Railway](#deploy-to-railway)
+- [How the entrypoint works](#how-the-entrypoint-works)
+- [Changing the Moodle version](#changing-the-moodle-version)
+- [Troubleshooting](#troubleshooting)
+- [Resources](#resources)
+- [Disclaimer](#disclaimer)
+- [License](#license)
 
 ---
 
@@ -23,7 +34,7 @@ This repo gives you the fastest way to get Moodle running on Railway for:
 
 ---
 
-## Why Railway? (railway.com / railway.app)
+## Why Railway?
 
 Railway gives you a managed cloud platform with persistent volumes, built-in PostgreSQL/MySQL databases, automatic HTTPS, and deploy-from-GitHub — everything you need to get a Moodle sandbox running without provisioning a VPS or managing Nginx configs yourself.
 
@@ -38,6 +49,82 @@ Railway gives you a managed cloud platform with persistent volumes, built-in Pos
 
 ---
 
+## Deploy to Railway
+
+### Step 1 — Deploy the template
+
+Click the button below to deploy this template to your Railway account. This will automatically provision the Moodle service, a PostgreSQL database, and a persistent volume for Moodle data.
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/XQrl4e?referralCode=6VSPtD&utm_medium=integration&utm_source=template&utm_campaign=generic)
+
+After the template is deployed, your Railway project will look something like this:
+
+![Railway project overview after deploying the template](screenshots/01-railway-services.png)
+
+### Step 2 — Run the Moodle installer
+
+Once the services are running, open your Moodle URL. You can find it in your Railway project by clicking the **Moodle** service → **Settings** → **Networking** → **Public Networking**. You'll be walked through a series of setup screens.
+
+#### 2.1 — Language
+
+Select your preferred language and click **Next**.
+
+#### 2.2 — Paths
+
+Leave the paths as they are and click **Next**.
+
+#### 2.3 — Database
+
+Select **PostgreSQL (native/pgsql)** as the database type and click **Next**.
+
+#### 2.4 — Database settings
+
+Fill in the database connection form using the credentials from your Railway PostgreSQL service:
+
+| Field | Railway variable |
+|-------|-----------------|
+| **Database host** | `PGHOST` |
+| **Database name** | `PGDATABASE` |
+| **Database user** | `PGUSER` |
+| **Database password** | `PGPASSWORD` |
+| **Tables prefix** | Leave as is (prefilled) |
+| **Database port** | `PGPORT` |
+| **Unix socket** | Leave empty |
+
+Copy the value of each variable from your Railway project by clicking on the **Postgres** service → **Variables** tab.
+
+![Railway PostgreSQL variables](screenshots/02-railway-postgres-variables.png)
+
+Once filled in, click **Next**.
+
+#### 2.5 — Copyright notice
+
+Read through the copyright notice and click **Continue**.
+
+#### 2.6 — Server checks
+
+Moodle will run a series of checks on your server environment. If everything shows as **OK**, click **Continue**. If any checks fail, check the build logs in your Railway project for hints.
+
+#### 2.7 — System installation
+
+Moodle will now run the full database installation. This may take a minute or two — you'll see a log of items being installed as it progresses. Scroll down to the bottom of the page and wait for the last item (`factor_webauthn`) to appear, then click **Continue**.
+
+> If you land on an error page after this step, see [IP address mismatch](#ip-address-mismatch) in the Troubleshooting section.
+
+#### 2.8 — Create main administrator account
+
+Fill in the administrator account details as you see fit, then click **Update profile**.
+
+#### 2.9 — Settings
+
+Configure your site settings as you see fit, then click **Save changes**.
+
+#### 2.10 — Register your site (optional)
+
+You'll be prompted to register your site with Moodle HQ. This is entirely optional — skip it if you prefer, or fill in your details and submit. Either way, you're done. Your Moodle sandbox is up and running.
+
+---
+
 ## How the entrypoint works
 
 Railway sits behind a reverse proxy that terminates TLS. The `railway-entrypoint.sh` script handles two Railway-specific quirks:
@@ -49,7 +136,7 @@ Railway sits behind a reverse proxy that terminates TLS. The `railway-entrypoint
 
 ## Changing the Moodle version
 
-This repo tracks the **`MOODLE_405_STABLE`** branch — Moodle's 4.5 Long Term Support (LTS) stable branch, and the latest LTS version as of February 2026. This means every rebuild automatically picks up the latest patch release (bug fixes, security patches) without manually bumping a version tag.
+This repo tracks the **`MOODLE_405_STABLE`** branch — Moodle's 4.5 Long Term Support (LTS) stable branch, the latest LTS version as of February 2026. This means every rebuild automatically picks up the latest patch release (bug fixes, security patches) without manually bumping a version tag.
 
 To switch to a different Moodle version, change the branch in the `Dockerfile`:
 
@@ -65,16 +152,20 @@ Browse available stable branches and release tags on the [Moodle GitHub tags pag
 
 ## Troubleshooting
 
-**Mixed content / assets loading over HTTP**
-Ensure `MOODLE_WWWROOT` starts with `https://` and matches your actual domain exactly.
+### IP address mismatch
 
-**Permission errors on moodledata**
+After the system installation step you may land on an error page warning about an IP address mismatch ([installhijacked](https://docs.moodle.org/405/en/error/admin/installhijacked)). This is a known side effect of Railway's reverse proxy and is not a security issue in this context. Simply **refresh the page** — it usually resolves within a few refreshes (typically less than 20). You'll then be taken to the next step automatically.
+
+### Permission errors on moodledata
+
 The entrypoint sets ownership and permissions on `/var/www/moodledata` at startup. If you see permission errors, confirm the volume is mounted at exactly `/var/www/moodledata`.
 
-**"Database connection failed" on installer**
-Double-check your database environment variables. If using Railway reference variables, make sure the variable names match the database service name shown in your Railway project.
+### "Database connection failed" on installer
 
-**Build takes a long time**
+Double-check that the values entered in [step 2.4](#24--database-settings) match the actual variable values shown in the **Postgres** service → **Variables** tab in your Railway project.
+
+### Build takes a long time
+
 The Moodle codebase is large (~400 MB). Railway caches Docker layers — subsequent deploys that don't change the `Dockerfile` will be much faster.
 
 ---
@@ -94,10 +185,10 @@ This project is provided as-is for sandbox and development purposes. No guarante
 
 ---
 
-## Licence
+## License
 
-This repository's configuration files are released under the [MIT Licence](https://opensource.org/licenses/MIT).
+This repository's configuration files are released under the [MIT License](https://opensource.org/licenses/MIT).
 
 Copyright (c) 2026 Jesse J.T. Zweers
 
-Moodle itself is licenced under the [GNU GPL v3](https://docs.moodle.org/dev/License).
+Moodle itself is licensed under the [GNU GPL v3](https://docs.moodle.org/dev/License).
