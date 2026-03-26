@@ -22,6 +22,14 @@ cat > /etc/apache2/sites-available/000-default.conf <<'VHOST'
 <VirtualHost *:80>
     DocumentRoot /var/www/moodle/public
 
+    # Railway sits behind a reverse proxy — trust forwarded headers
+    RemoteIPHeader X-Forwarded-For
+    RemoteIPTrustedProxy 0.0.0.0/0
+
+    # Rewrite REMOTE_ADDR to the forwarded IP so Moodle sees a stable client IP
+    SetEnvIf X-Forwarded-For "(.+)" REMOTE_ADDR=$1
+    SetEnvIf X-Forwarded-Proto https HTTPS=on
+
     <Directory /var/www/moodle/public>
         Options Indexes FollowSymLinks
         AllowOverride All
@@ -33,32 +41,14 @@ cat > /etc/apache2/sites-available/000-default.conf <<'VHOST'
 </VirtualHost>
 VHOST
 
-# Railway reverse-proxy: treat X-Forwarded-Proto: https as HTTPS
-cat > /etc/apache2/conf-available/railway-proxy.conf <<'EOF'
-SetEnvIf X-Forwarded-Proto https HTTPS=on
-EOF
-a2enconf railway-proxy >/dev/null 2>&1 || true
+# Enable required modules
+a2enmod rewrite remoteip >/dev/null 2>&1 || true
 
-# Enable mod_rewrite (needed by Moodle)
-a2enmod rewrite >/dev/null 2>&1 || true
-
-# Write a Moodle config stub before the installer runs.
-# Only write if config.php doesn't already exist (i.e. first boot).
+# Post-install: patch config.php with proxy flags if Moodle is installed
+# but sslproxy/reverseproxy haven't been set yet
 CONFIG=/var/www/moodle/config.php
-if [ ! -f "$CONFIG" ]; then
-  cat > "$CONFIG" <<'MOODLECFG'
-<?php
-unset($CFG);
-global $CFG;
-$CFG = new stdClass();
-$CFG->wwwroot   = getenv('MOODLE_URL') ?: 'http://localhost';
-$CFG->dataroot  = '/var/www/moodledata';
-$CFG->directorypermissions = 0777;
-$CFG->sslproxy      = true;
-$CFG->reverseproxy  = true;
-require_once(__DIR__ . '/lib/setup.php');
-MOODLECFG
-  chown www-data:www-data "$CONFIG"
+if [ -f "$CONFIG" ] && ! grep -q "sslproxy" "$CONFIG"; then
+  sed -i "/require_once/i \$CFG->sslproxy = true;\n\$CFG->reverseproxy = true;" "$CONFIG"
 fi
 
 # Start the original entrypoint + Apache
