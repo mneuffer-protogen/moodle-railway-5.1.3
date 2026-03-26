@@ -24,17 +24,37 @@ a2enconf railway-proxy >/dev/null 2>&1 || true
 
 # ── Railway fix: patch out the IP-hijack check in admin/index.php ──
 # Moodle compares the IP stored at install time with the current request IP.
-# On Railway the container egress IP changes between requests, so this check
-# always fails with "Installation must be finished from the original IP address".
-# We comment out the 3-line block (if-check, print_error, closing brace).
+# On Railway the container egress IP changes between requests, so this always
+# fails with "Installation must be finished from the original IP address".
+#
+# Approach 1: Use PHP (guaranteed available) to comment out the check block
 ADMIN_INDEX="/var/www/html/admin/index.php"
-if [ -f "$ADMIN_INDEX" ] && grep -q 'lastip.*getremoteaddr\|getremoteaddr.*lastip' "$ADMIN_INDEX"; then
-    sed -i '/lastip.*getremoteaddr\|getremoteaddr.*lastip/{
-        s|^|// [Railway patch] |
-        n; s|^|// [Railway patch] |
-        n; s|^|// [Railway patch] |
-    }' "$ADMIN_INDEX"
-    echo "[railway-entrypoint] Patched IP-check in admin/index.php"
+if [ -f "$ADMIN_INDEX" ] && grep -q 'remoteip_check' "$ADMIN_INDEX" 2>/dev/null; then
+    # The check is behind a function/variable; patch it out
+    php -r '
+        $path = "/var/www/html/admin/index.php";
+        $code = file_get_contents($path);
+        // Comment out the entire IP check block
+        $code = preg_replace(
+            "/if\s*\(\s*\\$remoteip_check.*?\\}/s",
+            "/* [Railway patch] IP check disabled */",
+            $code
+        );
+        file_put_contents($path, $code);
+        echo "[railway-entrypoint] Patched remoteip_check in admin/index.php\n";
+    '
+fi
+
+# Approach 2 (belt-and-suspenders): If config.php exists, ensure the IP
+# check skip flag is present. This tells Moodle to skip the default
+# IP validation even if the source patch above didn't match.
+CONFIG="/var/www/html/config.php"
+if [ -f "$CONFIG" ]; then
+    if ! grep -q 'getremoteaddr_skip_default_ip_check' "$CONFIG" 2>/dev/null; then
+        # Insert before the final require_once line (which loads lib/setup.php)
+        sed -i '/require_once.*setup\.php/i \$CFG->getremoteaddr_skip_default_ip_check = true;' "$CONFIG"
+        echo "[railway-entrypoint] Added IP-check skip flag to config.php"
+    fi
 fi
 
 # Start the original entrypoint + Apache
