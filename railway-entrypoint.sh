@@ -39,7 +39,7 @@ if [ ! -f "$CONFIG" ]; then
   echo ">>> DB: $PGHOST:$PGPORT/$PGDATABASE as $PGUSER"
   echo ">>> URL: $MOODLE_URL"
 
-php /var/www/moodle/admin/cli/install.php \
+  php /var/www/moodle/admin/cli/install.php \
     --lang=en \
     --wwwroot="${MOODLE_URL}" \
     --dataroot=/var/www/moodledata \
@@ -60,11 +60,13 @@ php /var/www/moodle/admin/cli/install.php \
   echo ">>> CLI install complete."
 
   sed -i "/require_once/i \$CFG->sslproxy = true;\n\$CFG->reverseproxy = true;" "$CONFIG"
-  chown www-data:www-data "$CONFIG"
-  chmod 644 "$CONFIG"
-
   echo ">>> config.php patched with sslproxy + reverseproxy."
 fi
+
+# Always fix config.php permissions so www-data can read it
+chown www-data:www-data "$CONFIG"
+chmod 644 "$CONFIG"
+echo ">>> config.php permissions fixed."
 
 # Start the original entrypoint + Apache
 exec /usr/local/bin/moodle-docker-php-entrypoint apache2-foreground
