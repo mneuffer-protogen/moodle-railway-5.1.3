@@ -17,33 +17,9 @@ RUN set -eux; \
 # between requests so this check always fails. The block is
 # install-only and safe to disable permanently.
 # We use a line-by-line search so whitespace/indent never matters.
-RUN python3 << 'PYEOF'
-import re, sys
-
-path = "/var/www/html/admin/index.php"
-with open(path) as f:
-    lines = f.readlines()
-
-# Find the line containing the lastip check (strip to ignore whitespace)
-idx = None
-for i, line in enumerate(lines):
-    if "lastip" in line and "getremoteaddr" in line and "if" in line:
-        idx = i
-        break
-
-if idx is None:
-    print("ERROR: could not find lastip check line", file=sys.stderr)
-    sys.exit(1)
-
-# Comment out that line and the next two (print_error + closing brace)
-for i in range(idx, min(idx + 3, len(lines))):
-    lines[i] = "    // [Railway patch] " + lines[i].lstrip()
-
-with open(path, "w") as f:
-    f.writelines(lines)
-
-print(f"Patch applied: commented lines {idx+1}–{idx+3} in {path}")
-PYEOF
+RUN sed -i '/lastip.*getremoteaddr\|getremoteaddr.*lastip/{s|^|// [Railway patch] |;n;s|^|// [Railway patch] |;n;s|^|// [Railway patch] |}' \
+    /var/www/html/admin/index.php \
+ && echo "Railway patch applied: IP-check lines commented out"
 
 # ── Composer dependencies ─────────────────────────────────────
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
