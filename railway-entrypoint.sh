@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 # Ensure only one MPM module is enabled (prefork)
 a2dismod mpm_event mpm_worker >/dev/null 2>&1 || true
@@ -29,6 +29,16 @@ CONFIG=/var/www/moodle/config.php
 if [ ! -f "$CONFIG" ]; then
   echo ">>> No config.php found — running Moodle CLI installer..."
 
+  : "${MOODLE_URL:?ERROR: MOODLE_URL is not set}"
+  : "${PGHOST:?ERROR: PGHOST is not set}"
+  : "${PGDATABASE:?ERROR: PGDATABASE is not set}"
+  : "${PGUSER:?ERROR: PGUSER is not set}"
+  : "${PGPASSWORD:?ERROR: PGPASSWORD is not set}"
+  : "${MOODLE_ADMIN_PASS:?ERROR: MOODLE_ADMIN_PASS is not set}"
+
+  echo ">>> DB: $PGHOST:$PGPORT/$PGDATABASE as $PGUSER"
+  echo ">>> URL: $MOODLE_URL"
+
   sudo -u www-data php /var/www/moodle/admin/cli/install.php \
     --lang=en \
     --wwwroot="${MOODLE_URL}" \
@@ -38,7 +48,7 @@ if [ ! -f "$CONFIG" ]; then
     --dbname="${PGDATABASE}" \
     --dbuser="${PGUSER}" \
     --dbpass="${PGPASSWORD}" \
-    --dbport="${PGPORT}" \
+    --dbport="${PGPORT:-5432}" \
     --fullname="Moodle" \
     --shortname="moodle" \
     --adminuser=admin \
