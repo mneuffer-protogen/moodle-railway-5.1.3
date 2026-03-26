@@ -61,6 +61,7 @@ php /var/www/moodle/admin/cli/install.php \
 
   sed -i "/require_once/i \$CFG->sslproxy = true;\n\$CFG->reverseproxy = true;" "$CONFIG"
   chown www-data:www-data "$CONFIG"
+  chmod 644 "$CONFIG"
 
   echo ">>> config.php patched with sslproxy + reverseproxy."
 fi
