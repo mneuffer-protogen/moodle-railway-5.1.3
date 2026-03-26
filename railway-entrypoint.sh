@@ -14,23 +14,45 @@ mkdir -p /var/www/moodledata
 chown -R www-data:www-data /var/www/moodledata
 chmod -R 0775 /var/www/moodledata
 
-# Enable mod_rewrite (needed by Moodle)
+# Enable mod_rewrite
 a2enmod rewrite >/dev/null 2>&1 || true
 
 # Railway reverse-proxy: treat X-Forwarded-Proto: https as HTTPS
-# Also normalize REMOTE_ADDR from X-Forwarded-For so Moodle sees
-# a consistent client IP throughout the installer (fixes IP mismatch error)
 cat > /etc/apache2/conf-available/railway-proxy.conf <<'EOF'
 SetEnvIf X-Forwarded-Proto https HTTPS=on
-SetEnvIf X-Forwarded-For "^([^,]+)" REMOTE_ADDR=$1
 EOF
 a2enconf railway-proxy >/dev/null 2>&1 || true
 
-# Post-install: patch config.php with proxy flags once Moodle installer
-# has created it, but only if not already patched
+# CLI install on first boot only
 CONFIG=/var/www/moodle/config.php
-if [ -f "$CONFIG" ] && ! grep -q "sslproxy" "$CONFIG"; then
+
+if [ ! -f "$CONFIG" ]; then
+  echo ">>> No config.php found — running Moodle CLI installer..."
+
+  sudo -u www-data php /var/www/moodle/admin/cli/install.php \
+    --lang=en \
+    --wwwroot="${MOODLE_URL}" \
+    --dataroot=/var/www/moodledata \
+    --dbtype=pgsql \
+    --dbhost="${PGHOST}" \
+    --dbname="${PGDATABASE}" \
+    --dbuser="${PGUSER}" \
+    --dbpass="${PGPASSWORD}" \
+    --dbport="${PGPORT}" \
+    --fullname="Moodle" \
+    --shortname="moodle" \
+    --adminuser=admin \
+    --adminpass="${MOODLE_ADMIN_PASS}" \
+    --adminemail="admin@example.com" \
+    --non-interactive \
+    --agree-license
+
+  echo ">>> CLI install complete."
+
   sed -i "/require_once/i \$CFG->sslproxy = true;\n\$CFG->reverseproxy = true;" "$CONFIG"
+  chown www-data:www-data "$CONFIG"
+
+  echo ">>> config.php patched with sslproxy + reverseproxy."
 fi
 
 # Start the original entrypoint + Apache
