@@ -39,7 +39,7 @@ if [ ! -f "$CONFIG" ]; then
   echo ">>> DB: $PGHOST:$PGPORT/$PGDATABASE as $PGUSER"
   echo ">>> URL: $MOODLE_URL"
 
-  sudo -u www-data php /var/www/moodle/admin/cli/install.php \
+php /var/www/moodle/admin/cli/install.php \
     --lang=en \
     --wwwroot="${MOODLE_URL}" \
     --dataroot=/var/www/moodledata \
