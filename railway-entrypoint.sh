@@ -35,7 +35,7 @@ a2enmod  remoteip      >/dev/null 2>&1 || true
 a2enconf railway-proxy >/dev/null 2>&1 || true
 
 # ─────────────────────────────────────────────────────────────
-# 4. Inject reverseproxy/sslproxy into config.php if it exists
+# 4. Inject reverseproxy/sslproxy into config.php if present
 #    (handles redeployments where config.php is on the volume)
 # ─────────────────────────────────────────────────────────────
 CONFIG_PHP="/var/www/html/config.php"
@@ -44,7 +44,7 @@ if [ -f "$CONFIG_PHP" ] && ! grep -q "reverseproxy" "$CONFIG_PHP"; then
 \$CFG->reverseproxy = 1;  \/\/ Trust X-Forwarded-For (Railway proxy)\n\
 \$CFG->sslproxy     = 1;  \/\/ Treat proxied requests as HTTPS\n" \
         "$CONFIG_PHP"
-    echo "[entrypoint] Injected reverseproxy config into config.php"
+    echo "[entrypoint] Injected reverseproxy + sslproxy into config.php"
 fi
 
 # ─────────────────────────────────────────────────────────────

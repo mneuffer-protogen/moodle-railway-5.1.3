@@ -11,17 +11,37 @@ RUN set -eux; \
     rm -rf /var/www/html/.git; \
     chown -R www-data:www-data /var/www/html
 
-# ── Fix: patch out the IP hijack check in admin/index.php ─────
-# Moodle stores the installer's IP at DB-write time, then re-checks
-# it when the browser hits admin/index.php. On Railway the container's
-# egress IP is different from the browser's IP, so the check always
-# fails. The block is install-only and safe to remove permanently.
-RUN sed -i \
-    '/prevent installation hijacking/,/print_error.*installhijacked/{ \
-        s|if ($adminuser->lastip !== getremoteaddr()) {|if (false) { // patched: IP check disabled for reverse-proxy environments|; \
-        s|print_error.*installhijacked.*|// print_error removed|; \
-    }' \
-    /var/www/html/admin/index.php
+# ── Fix: patch out the IP hijack check ────────────────────────
+# Uses Python to avoid shell quoting issues with sed and $ signs.
+# The three-line block only runs during initial install and is
+# safe to disable permanently in reverse-proxy environments.
+RUN python3 - <<'PYEOF'
+path = "/var/www/html/admin/index.php"
+with open(path, "r") as f:
+    content = f.read()
+
+old = (
+    "    if ($adminuser->lastip !== getremoteaddr()) {\n"
+    "        print_error('installhijacked', 'admin');\n"
+    "    }"
+)
+new = (
+    "    // [Railway patch] IP check disabled: container egress IP\n"
+    "    // differs from browser IP behind Railway's reverse proxy.\n"
+    "    // if ($adminuser->lastip !== getremoteaddr()) {\n"
+    "    //     print_error('installhijacked', 'admin');\n"
+    "    // }"
+)
+
+if old not in content:
+    raise RuntimeError("Could not find IP check block — patch failed. Check admin/index.php manually.")
+
+content = content.replace(old, new, 1)
+with open(path, "w") as f:
+    f.write(content)
+
+print("Patch applied successfully.")
+PYEOF
 
 # ── Composer dependencies ─────────────────────────────────────
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
