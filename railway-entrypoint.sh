@@ -14,38 +14,20 @@ mkdir -p /var/www/moodledata
 chown -R www-data:www-data /var/www/moodledata
 chmod -R 0775 /var/www/moodledata
 
-# Log which MPM module is loaded
-apache2ctl -M 2>/dev/null | grep mpm || true
+# Enable mod_rewrite (needed by Moodle)
+a2enmod rewrite >/dev/null 2>&1 || true
 
-# Write a clean vhost pointing at Moodle 5.1's public/ subdirectory
-cat > /etc/apache2/sites-available/000-default.conf <<'VHOST'
-<VirtualHost *:80>
-    DocumentRoot /var/www/moodle/public
+# Railway reverse-proxy: treat X-Forwarded-Proto: https as HTTPS
+# Also normalize REMOTE_ADDR from X-Forwarded-For so Moodle sees
+# a consistent client IP throughout the installer (fixes IP mismatch error)
+cat > /etc/apache2/conf-available/railway-proxy.conf <<'EOF'
+SetEnvIf X-Forwarded-Proto https HTTPS=on
+SetEnvIf X-Forwarded-For "^([^,]+)" REMOTE_ADDR=$1
+EOF
+a2enconf railway-proxy >/dev/null 2>&1 || true
 
-    # Railway sits behind a reverse proxy — trust forwarded headers
-    RemoteIPHeader X-Forwarded-For
-    RemoteIPTrustedProxy 0.0.0.0/0
-
-    # Rewrite REMOTE_ADDR to the forwarded IP so Moodle sees a stable client IP
-    SetEnvIf X-Forwarded-For "(.+)" REMOTE_ADDR=$1
-    SetEnvIf X-Forwarded-Proto https HTTPS=on
-
-    <Directory /var/www/moodle/public>
-        Options Indexes FollowSymLinks
-        AllowOverride All
-        Require all granted
-    </Directory>
-
-    ErrorLog ${APACHE_LOG_DIR}/error.log
-    CustomLog ${APACHE_LOG_DIR}/access.log combined
-</VirtualHost>
-VHOST
-
-# Enable required modules
-a2enmod rewrite remoteip >/dev/null 2>&1 || true
-
-# Post-install: patch config.php with proxy flags if Moodle is installed
-# but sslproxy/reverseproxy haven't been set yet
+# Post-install: patch config.php with proxy flags once Moodle installer
+# has created it, but only if not already patched
 CONFIG=/var/www/moodle/config.php
 if [ -f "$CONFIG" ] && ! grep -q "sslproxy" "$CONFIG"; then
   sed -i "/require_once/i \$CFG->sslproxy = true;\n\$CFG->reverseproxy = true;" "$CONFIG"
