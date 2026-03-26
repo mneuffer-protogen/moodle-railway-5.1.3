@@ -11,36 +11,38 @@ RUN set -eux; \
     rm -rf /var/www/html/.git; \
     chown -R www-data:www-data /var/www/html
 
-# ── Fix: patch out the IP hijack check ────────────────────────
-# Uses Python to avoid shell quoting issues with sed and $ signs.
-# The three-line block only runs during initial install and is
-# safe to disable permanently in reverse-proxy environments.
-RUN python3 - <<'PYEOF'
+# ── Fix: patch out the IP hijack check in admin/index.php ─────
+# Moodle compares the IP stored at DB-write time with the IP at
+# admin/index.php. On Railway the container egress IP changes
+# between requests so this check always fails. The block is
+# install-only and safe to disable permanently.
+# We use a line-by-line search so whitespace/indent never matters.
+RUN python3 << 'PYEOF'
+import re, sys
+
 path = "/var/www/html/admin/index.php"
-with open(path, "r") as f:
-    content = f.read()
+with open(path) as f:
+    lines = f.readlines()
 
-old = (
-    "    if ($adminuser->lastip !== getremoteaddr()) {\n"
-    "        print_error('installhijacked', 'admin');\n"
-    "    }"
-)
-new = (
-    "    // [Railway patch] IP check disabled: container egress IP\n"
-    "    // differs from browser IP behind Railway's reverse proxy.\n"
-    "    // if ($adminuser->lastip !== getremoteaddr()) {\n"
-    "    //     print_error('installhijacked', 'admin');\n"
-    "    // }"
-)
+# Find the line containing the lastip check (strip to ignore whitespace)
+idx = None
+for i, line in enumerate(lines):
+    if "lastip" in line and "getremoteaddr" in line and "if" in line:
+        idx = i
+        break
 
-if old not in content:
-    raise RuntimeError("Could not find IP check block — patch failed. Check admin/index.php manually.")
+if idx is None:
+    print("ERROR: could not find lastip check line", file=sys.stderr)
+    sys.exit(1)
 
-content = content.replace(old, new, 1)
+# Comment out that line and the next two (print_error + closing brace)
+for i in range(idx, min(idx + 3, len(lines))):
+    lines[i] = "    // [Railway patch] " + lines[i].lstrip()
+
 with open(path, "w") as f:
-    f.write(content)
+    f.writelines(lines)
 
-print("Patch applied successfully.")
+print(f"Patch applied: commented lines {idx+1}–{idx+3} in {path}")
 PYEOF
 
 # ── Composer dependencies ─────────────────────────────────────
