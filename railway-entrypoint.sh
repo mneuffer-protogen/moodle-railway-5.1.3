@@ -29,31 +29,31 @@ a2enconf railway-proxy >/dev/null 2>&1 || true
 #
 # Approach 1: Use PHP (guaranteed available) to comment out the check block
 ADMIN_INDEX="/var/www/html/admin/index.php"
-if [ -f "$ADMIN_INDEX" ] && grep -q 'remoteip_check' "$ADMIN_INDEX" 2>/dev/null; then
-    # The check is behind a function/variable; patch it out
+if [ -f "$ADMIN_INDEX" ]; then
     php -r '
         $path = "/var/www/html/admin/index.php";
         $code = file_get_contents($path);
-        // Comment out the entire IP check block
-        $code = preg_replace(
-            "/if\s*\(\s*\\$remoteip_check.*?\\}/s",
-            "/* [Railway patch] IP check disabled */",
-            $code
-        );
-        file_put_contents($path, $code);
-        echo "[railway-entrypoint] Patched remoteip_check in admin/index.php\n";
+        
+        // The exact literal string in Moodle 4.x/5.x
+        $search = "if (\$adminuser->lastip !== getremoteaddr()) {";
+        $replace = "if (false) { // [Railway patch] bypassed: if (\$adminuser->lastip !== getremoteaddr()) {";
+        
+        if (strpos($code, $search) !== false) {
+            $code = str_replace($search, $replace, $code);
+            file_put_contents($path, $code);
+            echo "[railway-entrypoint] Patched adminuser->lastip check in admin/index.php\n";
+        }
     '
 fi
 
-# Approach 2 (belt-and-suspenders): If config.php exists, ensure the IP
-# check skip flag is present. This tells Moodle to skip the default
-# IP validation even if the source patch above didn't match.
+# Approach 2: Proper Proxy Configuration
+# Moodle needs to know it is behind a reverse proxy that terminates SSL
 CONFIG="/var/www/html/config.php"
 if [ -f "$CONFIG" ]; then
-    if ! grep -q 'getremoteaddr_skip_default_ip_check' "$CONFIG" 2>/dev/null; then
+    if ! grep -q 'reverseproxy' "$CONFIG" 2>/dev/null; then
         # Insert before the final require_once line (which loads lib/setup.php)
-        sed -i '/require_once.*setup\.php/i \$CFG->getremoteaddr_skip_default_ip_check = true;' "$CONFIG"
-        echo "[railway-entrypoint] Added IP-check skip flag to config.php"
+        sed -i "/require_once.*setup\.php/i \\\$CFG->reverseproxy = true;\n\$CFG->sslproxy = true;" "$CONFIG"
+        echo "[railway-entrypoint] Added reverse proxy settings to config.php"
     fi
 fi
 
